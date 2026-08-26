@@ -1,0 +1,36 @@
+name: Build and release
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: swift test
+
+  release:
+    name: Create GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build release archive
+        run: ./scripts/create-release-archive.sh
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" "dist/VoiceTyper-${TAG#v}-unsigned.zip" --title "$TAG" --generate-notes

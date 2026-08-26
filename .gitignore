@@ -1,0 +1,14 @@
+.DS_Store
+.build/
+DerivedData/
+dist/
+.env
+.env.*
+!.env.example
+AGENTS.md
+design-system/
+Resources/AppIcon-source.png
+Resources/AppIcon.iconset/
+*.xcuserstate
+xcuserdata/
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
