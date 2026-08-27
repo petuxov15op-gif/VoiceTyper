@@ -26,7 +26,9 @@
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>VoiceTyper использует микрофон только для записи вашей диктовки и голосовых команд.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>VoiceTyper использует микрофон только для записи вашей диктовки и голосовых команд.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>VoiceTyper временно приостанавливает Spotify на время записи и возобновляет музыку после неё.</string>
 </dict>
 </plist>

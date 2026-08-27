@@ -5,6 +5,30 @@ dist/
 .env
 .env.*
 !.env.example
+# Credentials and private keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.mobileprovision
+# Local network and VPN configuration
+*.ovpn
+*.conf
+*.wg
+wireguard/
+vpn/
+# Local data, logs, and Python environments
+*.sqlite
+*.sqlite3
+*.db
+*.log
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
 AGENTS.md
 design-system/
 Resources/AppIcon-source.png

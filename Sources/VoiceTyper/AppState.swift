@@ -44,7 +44,9 @@ final class AppState: ObservableObject {
     private let localWhisperRecognizer: LocalWhisperRecognizer
     private let openRouterRecognizer: OpenRouterRecognizer
     private let textInserter: TextInserter
+    private let spotifyPlaybackController: SpotifyPlaybackController
     private var isStartingRecording = false
+    private var shouldResumeSpotify = false
     private var insertionTarget: TextInsertionTarget?
     private var recordingGeneration = 0
     private var shortcutPressTracker = ShortcutPressTracker()
@@ -63,6 +65,7 @@ final class AppState: ObservableObject {
         localWhisperRecognizer = LocalWhisperRecognizer()
         openRouterRecognizer = OpenRouterRecognizer(keychain: keychain)
         textInserter = TextInserter()
+        spotifyPlaybackController = SpotifyPlaybackController()
         microphonePermission = audioRecorder.permissionState
         hasOpenRouterKey = false
         hasAccessibilityPermission = textInserter.hasAccessibilityPermission
@@ -150,9 +153,11 @@ final class AppState: ObservableObject {
         removeLastRecording()
         Task {
             do {
+                shouldResumeSpotify = spotifyPlaybackController.pauseIfPlaying()
                 try await audioRecorder.start()
                 guard recordingGeneration == generation else {
                     audioRecorder.cancel()
+                    resumeSpotifyIfNeeded()
                     return
                 }
                 isStartingRecording = false
@@ -168,6 +173,7 @@ final class AppState: ObservableObject {
 
             } catch {
                 isStartingRecording = false
+                resumeSpotifyIfNeeded()
                 microphonePermission = audioRecorder.permissionState
                 RecordingOverlayController.shared.hide()
                 mode = .error(error.localizedDescription)
@@ -183,6 +189,7 @@ final class AppState: ObservableObject {
             RecordingOverlayController.shared.hide()
             inputLevel = 0
             lastRecordingURL = try audioRecorder.stop()
+            resumeSpotifyIfNeeded()
             switch settings.recognizerMode {
             case .localWhisper:
                 transcribeLocally(action: action)
@@ -190,6 +197,7 @@ final class AppState: ObservableObject {
                 transcribeWithOpenRouter(action: action)
             }
         } catch {
+            resumeSpotifyIfNeeded()
             mode = .error(error.localizedDescription)
         }
     }
@@ -290,9 +298,16 @@ final class AppState: ObservableObject {
         finishWhenRecordingStarts = false
         shortcutPressTracker.reset()
         audioRecorder.cancel()
+        resumeSpotifyIfNeeded()
         RecordingOverlayController.shared.hide()
         inputLevel = 0
         mode = .ready
+    }
+
+    private func resumeSpotifyIfNeeded() {
+        guard shouldResumeSpotify else { return }
+        shouldResumeSpotify = false
+        spotifyPlaybackController.resume()
     }
 
     private func removeLastRecording() {
