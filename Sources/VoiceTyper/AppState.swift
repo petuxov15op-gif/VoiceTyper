@@ -74,6 +74,17 @@ final class AppState: ObservableObject {
             _ = await audioRecorder.requestPermission()
             microphonePermission = audioRecorder.permissionState
         }
+        if settings.recognizerMode == .localWhisper {
+            Task {
+                do {
+                    try await localWhisperRecognizer.preload()
+                } catch {
+                    if case .ready = mode {
+                        mode = .error("Не удалось подготовить локальную модель: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
         if !hasAccessibilityPermission {
             Task {
                 try? await Task.sleep(for: .milliseconds(500))

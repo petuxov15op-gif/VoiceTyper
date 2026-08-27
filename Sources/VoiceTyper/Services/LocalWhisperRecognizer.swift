@@ -16,8 +16,12 @@ actor LocalWhisperRecognizer: SpeechRecognizer {
     private let modelName: String
     private var whisperKit: WhisperKit?
 
-    init(modelName: String = "small") {
+    init(modelName: String = "base") {
         self.modelName = modelName
+    }
+
+    func preload() async throws {
+        _ = try await loadWhisperKit()
     }
 
     func transcribe(audioURL: URL, language: String) async throws -> TranscriptionResult {
