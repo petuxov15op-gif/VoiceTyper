@@ -49,7 +49,7 @@ struct OpenRouterRecognizer: SpeechRecognizer {
                 format: audioURL.pathExtension.lowercased()
             ),
             language: language == "auto" ? nil : language,
-            prompt: context.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            provider: .forPrompt(context),
             temperature: 0
         )
 
@@ -109,15 +109,33 @@ private extension OpenRouterRecognizer {
         let model: String
         let inputAudio: InputAudio
         let language: String?
-        let prompt: String?
+        let provider: Provider?
         let temperature: Double
 
         enum CodingKeys: String, CodingKey {
             case model
             case inputAudio = "input_audio"
             case language
-            case prompt
+            case provider
             case temperature
+        }
+
+        struct Provider: Encodable {
+            struct Options: Encodable {
+                struct Groq: Encodable {
+                    let prompt: String
+                }
+
+                let groq: Groq
+            }
+
+            let options: Options
+
+            static func forPrompt(_ value: String) -> Self? {
+                let prompt = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !prompt.isEmpty else { return nil }
+                return .init(options: .init(groq: .init(prompt: prompt)))
+            }
         }
     }
 
@@ -142,8 +160,4 @@ private extension OpenRouterRecognizer {
 
         let error: Details
     }
-}
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

@@ -77,6 +77,9 @@ final class AudioRecorder {
 
         let engine = AVAudioEngine()
         let input = engine.inputNode
+        if voiceProcessingEnabled {
+            try? input.setVoiceProcessingEnabled(true)
+        }
         if let deviceID {
             guard let audioUnit = input.audioUnit else { throw RecorderError.deviceUnavailable }
             var selectedDeviceID = deviceID
@@ -89,9 +92,6 @@ final class AudioRecorder {
                 UInt32(MemoryLayout<AudioDeviceID>.size)
             )
             guard status == noErr else { throw RecorderError.deviceUnavailable }
-        }
-        if voiceProcessingEnabled {
-            try? input.setVoiceProcessingEnabled(true)
         }
         let format = input.inputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
