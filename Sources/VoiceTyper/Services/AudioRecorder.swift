@@ -1,12 +1,20 @@
 import AVFoundation
+import AudioToolbox
+import CoreAudio
 import Foundation
 
 @MainActor
 final class AudioRecorder {
+    struct InputDevice: Identifiable, Equatable, Sendable {
+        let id: AudioDeviceID
+        let name: String
+    }
+
     enum RecorderError: LocalizedError {
         case permissionDenied
         case invalidInputFormat
         case notRecording
+        case deviceUnavailable
         case writeFailed(String)
 
         var errorDescription: String? {
@@ -17,6 +25,8 @@ final class AudioRecorder {
                 "Не удалось получить поддерживаемый формат микрофона."
             case .notRecording:
                 "Запись ещё не запущена."
+            case .deviceUnavailable:
+                "Не удалось подключить выбранный микрофон. Выберите системный микрофон или другое устройство."
             case .writeFailed(let message):
                 "Не удалось записать звук: \(message)"
             }
@@ -61,12 +71,28 @@ final class AudioRecorder {
         }
     }
 
-    func start() async throws {
+    func start(deviceID: AudioDeviceID?, voiceProcessingEnabled: Bool) async throws {
         guard engine?.isRunning != true else { return }
         guard await requestPermission() else { throw RecorderError.permissionDenied }
 
         let engine = AVAudioEngine()
         let input = engine.inputNode
+        if let deviceID {
+            guard let audioUnit = input.audioUnit else { throw RecorderError.deviceUnavailable }
+            var selectedDeviceID = deviceID
+            let status = AudioUnitSetProperty(
+                audioUnit,
+                kAudioOutputUnitProperty_CurrentDevice,
+                kAudioUnitScope_Global,
+                0,
+                &selectedDeviceID,
+                UInt32(MemoryLayout<AudioDeviceID>.size)
+            )
+            guard status == noErr else { throw RecorderError.deviceUnavailable }
+        }
+        if voiceProcessingEnabled {
+            try? input.setVoiceProcessingEnabled(true)
+        }
         let format = input.inputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
             throw RecorderError.invalidInputFormat
@@ -102,6 +128,76 @@ final class AudioRecorder {
             try? FileManager.default.removeItem(at: url)
             throw error
         }
+    }
+
+    func availableInputDevices() -> [InputDevice] {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            &dataSize
+        ) == noErr else { return [] }
+
+        let count = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        var deviceIDs = [AudioDeviceID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            &dataSize,
+            &deviceIDs
+        ) == noErr else { return [] }
+
+        return deviceIDs.compactMap { deviceID in
+            guard Self.inputChannelCount(for: deviceID) > 0,
+                  let name = Self.deviceName(for: deviceID)
+            else { return nil }
+            return InputDevice(id: deviceID, name: name)
+        }
+    }
+
+    private static func inputChannelCount(for deviceID: AudioDeviceID) -> Int {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &dataSize) == noErr
+        else { return 0 }
+        let rawBuffer = UnsafeMutableRawPointer.allocate(
+            byteCount: Int(dataSize),
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        defer { rawBuffer.deallocate() }
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, rawBuffer) == noErr
+        else { return 0 }
+        let list = rawBuffer.assumingMemoryBound(to: AudioBufferList.self)
+        return UnsafeMutableAudioBufferListPointer(list).reduce(0) {
+            $0 + Int($1.mNumberChannels)
+        }
+    }
+
+    private static func deviceName(for deviceID: AudioDeviceID) -> String? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyName,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var name: Unmanaged<CFString>?
+        var dataSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &name) == noErr,
+              let name
+        else { return nil }
+        return name.takeRetainedValue() as String
     }
 
     func stop() throws -> URL {

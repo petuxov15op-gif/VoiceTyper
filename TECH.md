@@ -11,6 +11,7 @@
 - `LocalWhisperRecognizer`: actor-isolated WhisperKit/Core ML implementation using
   multilingual Whisper Large V3 Turbo with a reusable model pipeline.
 - `OpenRouterRecognizer`: cloud implementation; API key loaded from Keychain.
+- `OpenRouterTextCorrector`: optional Russian transcription cleanup through OpenRouter.
 - `TextInserter`: captures the focused Accessibility element before recording,
   uses AX selected-text insertion first, CGEvent paste second, and clipboard-only fallback last.
 - `AssistantService`: command interpretation and result routing.
@@ -29,6 +30,7 @@
 
 - No secret enters `UserDefaults`.
 - Network calls are only made from cloud provider implementations.
+- Local recognition context is tokenized on device; local mode never invokes text correction.
 - Audio URLs have short lifetimes and deterministic cleanup.
 - Assistant actions that mutate external state require confirmation.
 

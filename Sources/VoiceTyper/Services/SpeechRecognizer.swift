@@ -7,6 +7,7 @@ struct TranscriptionResult: Equatable, Sendable {
 protocol SpeechRecognizer: Sendable {
     func transcribe(
         audioURL: URL,
-        language: String
+        language: String,
+        context: String
     ) async throws -> TranscriptionResult
 }

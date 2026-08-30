@@ -14,8 +14,26 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(recognizerMode.rawValue, forKey: Keys.recognizerMode) }
     }
 
-    @Published var languageCode: String {
-        didSet { defaults.set(languageCode, forKey: Keys.languageCode) }
+    @Published var recognitionContext: String {
+        didSet { defaults.set(recognitionContext, forKey: Keys.recognitionContext) }
+    }
+
+    @Published var smartCorrectionEnabled: Bool {
+        didSet { defaults.set(smartCorrectionEnabled, forKey: Keys.smartCorrectionEnabled) }
+    }
+
+    @Published var microphoneDeviceID: UInt32? {
+        didSet {
+            if let microphoneDeviceID {
+                defaults.set(Int(microphoneDeviceID), forKey: Keys.microphoneDeviceID)
+            } else {
+                defaults.removeObject(forKey: Keys.microphoneDeviceID)
+            }
+        }
+    }
+
+    @Published var voiceProcessingEnabled: Bool {
+        didSet { defaults.set(voiceProcessingEnabled, forKey: Keys.voiceProcessingEnabled) }
     }
 
     private let defaults: UserDefaults
@@ -48,7 +66,14 @@ final class AppSettings: ObservableObject {
         recognizerMode = RecognizerMode(
             rawValue: defaults.string(forKey: Keys.recognizerMode) ?? ""
         ) ?? .localWhisper
-        languageCode = defaults.string(forKey: Keys.languageCode) ?? "ru"
+        recognitionContext = defaults.string(forKey: Keys.recognitionContext) ?? ""
+        smartCorrectionEnabled = defaults.object(forKey: Keys.smartCorrectionEnabled) as? Bool ?? false
+        if defaults.object(forKey: Keys.microphoneDeviceID) != nil {
+            microphoneDeviceID = UInt32(defaults.integer(forKey: Keys.microphoneDeviceID))
+        } else {
+            microphoneDeviceID = nil
+        }
+        voiceProcessingEnabled = defaults.object(forKey: Keys.voiceProcessingEnabled) as? Bool ?? true
     }
 
     var hasShortcutConflict: Bool {
@@ -75,6 +100,9 @@ final class AppSettings: ObservableObject {
         static let dictationShortcut = "dictationShortcut"
         static let assistantShortcut = "assistantShortcut"
         static let recognizerMode = "recognizerMode"
-        static let languageCode = "languageCode"
+        static let recognitionContext = "recognitionContext"
+        static let smartCorrectionEnabled = "smartCorrectionEnabled"
+        static let microphoneDeviceID = "microphoneDeviceID"
+        static let voiceProcessingEnabled = "voiceProcessingEnabled"
     }
 }

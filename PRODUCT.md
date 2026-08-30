@@ -14,7 +14,10 @@ Provide private, affordable voice input anywhere on macOS through two configurab
 - Configurable global shortcut for the voice assistant.
 - Local Whisper transcription.
 - OpenRouter speech-to-text transcription.
-- Russian by default, with language selection.
+- Russian recognition mode.
+- Recognition context for names, product names, and specialist terms.
+- Optional OpenRouter spelling and punctuation correction.
+- Selectable microphone with optional voice processing.
 - Automatic insertion with clipboard fallback.
 - Explicit microphone, Accessibility, and network states.
 - OpenRouter credentials stored in macOS Keychain.
@@ -36,6 +39,7 @@ Provide private, affordable voice input anywhere on macOS through two configurab
 - WhisperKit downloads the multilingual Whisper Large V3 Turbo Core ML model once;
   model files are cached locally.
 - Cloud mode clearly identifies the selected provider.
+- Smart correction is opt-in and available only in OpenRouter mode.
 - Temporary recordings are deleted after success, cancellation, or failure.
 - No audio history is enabled by default.
 

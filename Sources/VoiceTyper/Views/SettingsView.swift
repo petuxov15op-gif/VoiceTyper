@@ -37,17 +37,37 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
 
-                Picker("Язык", selection: $settings.languageCode) {
-                    Text("Русский").tag("ru")
-                    Text("English").tag("en")
-                    Text("Автоопределение").tag("auto")
+                LabeledContent("Язык") {
+                    Text("Русский")
                 }
+
+                TextField(
+                    "Контекст распознавания",
+                    text: $settings.recognitionContext,
+                    prompt: Text("Имена, названия и специальные термины через запятую"),
+                    axis: .vertical
+                )
+                .lineLimit(2...4)
+
+                Text("Контекст помогает Whisper правильно писать редкие слова. Аудио в локальном режиме по-прежнему никуда не отправляется.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 if settings.recognizerMode == .localWhisper {
                     Text("Точная многоязычная модель Whisper Large V3 Turbo (~626 МБ) загрузится один раз, затем распознавание работает полностью локально.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+
+                Toggle("Умная коррекция текста", isOn: $settings.smartCorrectionEnabled)
+                    .disabled(settings.recognizerMode != .openRouter)
+
+                Text(settings.recognizerMode == .openRouter
+                     ? "После распознавания исправляет орфографию и пунктуацию через OpenRouter, не меняя смысл."
+                     : "Доступна в режиме OpenRouter, поскольку коррекция использует сетевую модель.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             if settings.recognizerMode == .openRouter {
@@ -97,6 +117,20 @@ struct SettingsView: View {
                         appState.requestMicrophonePermission()
                     }
                 }
+
+
+                Picker("Устройство", selection: $settings.microphoneDeviceID) {
+                    Text("Системный микрофон").tag(nil as UInt32?)
+                    ForEach(appState.inputDevices) { device in
+                        Text(device.name).tag(Optional(device.id))
+                    }
+                }
+
+                Toggle("Подавление шума и эха", isOn: $settings.voiceProcessingEnabled)
+
+                Text("После отпускания клавиши VoiceTyper сохраняет короткое окончание записи, чтобы не обрезать последнее слово.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Вставка текста") {
@@ -151,6 +185,7 @@ struct SettingsView: View {
         .onAppear {
             appState.refreshOpenRouterKeyStatus()
             appState.refreshAccessibilityPermission()
+            appState.refreshInputDevices()
         }
     }
 }

@@ -26,15 +26,24 @@ actor LocalWhisperRecognizer: SpeechRecognizer {
         _ = try await loadWhisperKit()
     }
 
-    func transcribe(audioURL: URL, language: String) async throws -> TranscriptionResult {
+    func transcribe(
+        audioURL: URL,
+        language: String,
+        context: String
+    ) async throws -> TranscriptionResult {
         let whisperKit = try await loadWhisperKit()
         let isAutomaticLanguage = language == "auto"
+        let trimmedContext = context.trimmingCharacters(in: .whitespacesAndNewlines)
+        let promptTokens = trimmedContext.isEmpty
+            ? nil
+            : whisperKit.tokenizer?.encode(text: " " + trimmedContext)
         let options = DecodingOptions(
             language: isAutomaticLanguage ? nil : language,
             usePrefillPrompt: !isAutomaticLanguage,
             detectLanguage: isAutomaticLanguage,
             skipSpecialTokens: true,
-            withoutTimestamps: true
+            withoutTimestamps: true,
+            promptTokens: promptTokens
         )
         let results = try await whisperKit.transcribe(
             audioPath: audioURL.path,

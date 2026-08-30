@@ -32,7 +32,11 @@ struct OpenRouterRecognizer: SpeechRecognizer {
         self.model = model
     }
 
-    func transcribe(audioURL: URL, language: String) async throws -> TranscriptionResult {
+    func transcribe(
+        audioURL: URL,
+        language: String,
+        context: String
+    ) async throws -> TranscriptionResult {
         guard let apiKey = try keychain.read(), !apiKey.isEmpty else {
             throw RecognizerError.missingAPIKey
         }
@@ -45,6 +49,7 @@ struct OpenRouterRecognizer: SpeechRecognizer {
                 format: audioURL.pathExtension.lowercased()
             ),
             language: language == "auto" ? nil : language,
+            prompt: context.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
             temperature: 0
         )
 
@@ -104,12 +109,14 @@ private extension OpenRouterRecognizer {
         let model: String
         let inputAudio: InputAudio
         let language: String?
+        let prompt: String?
         let temperature: Double
 
         enum CodingKeys: String, CodingKey {
             case model
             case inputAudio = "input_audio"
             case language
+            case prompt
             case temperature
         }
     }
@@ -135,4 +142,8 @@ private extension OpenRouterRecognizer {
 
         let error: Details
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

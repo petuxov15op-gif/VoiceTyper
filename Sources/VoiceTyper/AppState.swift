@@ -36,6 +36,7 @@ final class AppState: ObservableObject {
     @Published private(set) var hasAccessibilityPermission: Bool
     @Published private(set) var insertionNotice: String?
     @Published private(set) var inputLevel: Float = 0
+    @Published private(set) var inputDevices: [AudioRecorder.InputDevice] = []
 
     let settings: AppSettings
     private let hotKeyManager: GlobalHotKeyManager
@@ -43,6 +44,7 @@ final class AppState: ObservableObject {
     private let keychain: KeychainStore
     private let localWhisperRecognizer: LocalWhisperRecognizer
     private let openRouterRecognizer: OpenRouterRecognizer
+    private let openRouterTextCorrector: OpenRouterTextCorrector
     private let textInserter: TextInserter
     private let spotifyPlaybackController: SpotifyPlaybackController
     private var isStartingRecording = false
@@ -64,12 +66,14 @@ final class AppState: ObservableObject {
         self.keychain = keychain
         localWhisperRecognizer = LocalWhisperRecognizer()
         openRouterRecognizer = OpenRouterRecognizer(keychain: keychain)
+        openRouterTextCorrector = OpenRouterTextCorrector(keychain: keychain)
         textInserter = TextInserter()
         spotifyPlaybackController = SpotifyPlaybackController()
         microphonePermission = audioRecorder.permissionState
         hasOpenRouterKey = false
         hasAccessibilityPermission = textInserter.hasAccessibilityPermission
         registerShortcuts()
+        refreshInputDevices()
         Task {
             _ = await audioRecorder.requestPermission()
             microphonePermission = audioRecorder.permissionState
@@ -165,7 +169,10 @@ final class AppState: ObservableObject {
         Task {
             do {
                 shouldResumeSpotify = spotifyPlaybackController.pauseIfPlaying()
-                try await audioRecorder.start()
+                try await audioRecorder.start(
+                    deviceID: settings.microphoneDeviceID,
+                    voiceProcessingEnabled: settings.voiceProcessingEnabled
+                )
                 guard recordingGeneration == generation else {
                     audioRecorder.cancel()
                     resumeSpotifyIfNeeded()
@@ -195,21 +202,27 @@ final class AppState: ObservableObject {
     func finish() {
         guard case .listening(let action) = mode else { return }
         recordingGeneration += 1
-        do {
-            mode = .processing(action)
-            RecordingOverlayController.shared.hide()
-            inputLevel = 0
-            lastRecordingURL = try audioRecorder.stop()
-            resumeSpotifyIfNeeded()
-            switch settings.recognizerMode {
-            case .localWhisper:
-                transcribeLocally(action: action)
-            case .openRouter:
-                transcribeWithOpenRouter(action: action)
+        let generation = recordingGeneration
+        mode = .processing(action)
+        RecordingOverlayController.shared.hide()
+        inputLevel = 0
+        Task {
+            // Keep a short tail so releasing push-to-talk does not clip the last syllable.
+            try? await Task.sleep(for: .milliseconds(180))
+            guard recordingGeneration == generation, audioRecorder.isRecording else { return }
+            do {
+                lastRecordingURL = try audioRecorder.stop()
+                resumeSpotifyIfNeeded()
+                switch settings.recognizerMode {
+                case .localWhisper:
+                    transcribeLocally(action: action)
+                case .openRouter:
+                    transcribeWithOpenRouter(action: action)
+                }
+            } catch {
+                resumeSpotifyIfNeeded()
+                mode = .error(error.localizedDescription)
             }
-        } catch {
-            resumeSpotifyIfNeeded()
-            mode = .error(error.localizedDescription)
         }
     }
 
@@ -258,6 +271,14 @@ final class AppState: ObservableObject {
         Task {
             _ = await audioRecorder.requestPermission()
             microphonePermission = audioRecorder.permissionState
+        }
+    }
+
+    func refreshInputDevices() {
+        inputDevices = audioRecorder.availableInputDevices()
+        if let selectedID = settings.microphoneDeviceID,
+           !inputDevices.contains(where: { $0.id == selectedID }) {
+            settings.microphoneDeviceID = nil
         }
     }
 
@@ -342,15 +363,36 @@ final class AppState: ObservableObject {
             do {
                 let result = try await openRouterRecognizer.transcribe(
                     audioURL: url,
-                    language: settings.languageCode
+                    language: "ru",
+                    context: settings.recognitionContext
                 )
-                lastTranscript = result.text
-                lastCostUSD = result.costUSD
+                var finalText = result.text
+                var totalCost = result.costUSD
+                var correctionNotice: String?
+                if settings.smartCorrectionEnabled {
+                    do {
+                        let correction = try await openRouterTextCorrector.correct(
+                            result.text,
+                            context: settings.recognitionContext
+                        )
+                        finalText = correction.text
+                        if let correctionCost = correction.costUSD {
+                            totalCost = (totalCost ?? 0) + correctionCost
+                        }
+                    } catch {
+                        correctionNotice = "Текст распознан, но умная коррекция недоступна: \(error.localizedDescription)"
+                    }
+                }
+                lastTranscript = finalText
+                lastCostUSD = totalCost
                 let insertion = try await textInserter.insert(
-                    result.text,
+                    finalText,
                     into: insertionTarget ?? textInserter.captureTarget()
                 )
                 updateInsertionNotice(for: insertion)
+                if insertion == .inserted, let correctionNotice {
+                    insertionNotice = correctionNotice
+                }
                 mode = .result(action)
             } catch {
                 mode = .error(error.localizedDescription)
@@ -370,7 +412,8 @@ final class AppState: ObservableObject {
             do {
                 let result = try await localWhisperRecognizer.transcribe(
                     audioURL: url,
-                    language: settings.languageCode
+                    language: "ru",
+                    context: settings.recognitionContext
                 )
                 lastTranscript = result.text
                 lastCostUSD = nil

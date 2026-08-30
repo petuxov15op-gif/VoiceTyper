@@ -63,6 +63,29 @@ final class KeyboardShortcutTests: XCTestCase {
         cancellable?.cancel()
     }
 
+    @MainActor
+    func testRecognitionQualitySettingsPersist() {
+        let suiteName = "VoiceTyperTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertEqual(settings.recognitionContext, "")
+        XCTAssertFalse(settings.smartCorrectionEnabled)
+        XCTAssertTrue(settings.voiceProcessingEnabled)
+
+        settings.recognitionContext = "VoiceTyper, OpenRouter"
+        settings.smartCorrectionEnabled = true
+        settings.microphoneDeviceID = 42
+        settings.voiceProcessingEnabled = false
+
+        let restored = AppSettings(defaults: defaults)
+        XCTAssertEqual(restored.recognitionContext, "VoiceTyper, OpenRouter")
+        XCTAssertTrue(restored.smartCorrectionEnabled)
+        XCTAssertEqual(restored.microphoneDeviceID, 42)
+        XCTAssertFalse(restored.voiceProcessingEnabled)
+    }
+
     func testKeychainRoundTrip() throws {
         let identifier = UUID().uuidString
         let store = KeychainStore(
@@ -88,7 +111,8 @@ final class KeyboardShortcutTests: XCTestCase {
             ?? "openai/whisper-large-v3"
         let result = try await OpenRouterRecognizer(model: model).transcribe(
             audioURL: URL(fileURLWithPath: path),
-            language: "ru"
+            language: "ru",
+            context: "VoiceTyper, OpenRouter"
         )
 
         XCTAssertFalse(result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -109,11 +133,13 @@ final class KeyboardShortcutTests: XCTestCase {
         let recognizer = LocalWhisperRecognizer()
         let firstResult = try await recognizer.transcribe(
             audioURL: URL(fileURLWithPath: path),
-            language: "ru"
+            language: "ru",
+            context: "VoiceTyper, OpenRouter"
         )
         let secondResult = try await recognizer.transcribe(
             audioURL: URL(fileURLWithPath: path),
-            language: "ru"
+            language: "ru",
+            context: "VoiceTyper, OpenRouter"
         )
 
         XCTAssertFalse(firstResult.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
