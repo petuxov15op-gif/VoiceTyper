@@ -9,7 +9,7 @@
 - `AudioRecorder`: microphone capture and temporary files.
 - `SpeechRecognizer`: provider-independent transcription protocol.
 - `LocalWhisperRecognizer`: actor-isolated WhisperKit/Core ML implementation using
-  multilingual Small model with a reusable model pipeline.
+  multilingual Whisper Large V3 Turbo with a reusable model pipeline.
 - `OpenRouterRecognizer`: cloud implementation; API key loaded from Keychain.
 - `TextInserter`: captures the focused Accessibility element before recording,
   uses AX selected-text insertion first, CGEvent paste second, and clipboard-only fallback last.

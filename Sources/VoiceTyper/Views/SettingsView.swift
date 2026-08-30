@@ -44,7 +44,7 @@ struct SettingsView: View {
                 }
 
                 if settings.recognizerMode == .localWhisper {
-                    Text("Быстрая многоязычная модель Whisper Base загрузится один раз, затем распознавание работает полностью локально.")
+                    Text("Точная многоязычная модель Whisper Large V3 Turbo (~626 МБ) загрузится один раз, затем распознавание работает полностью локально.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

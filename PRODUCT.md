@@ -33,7 +33,7 @@ Provide private, affordable voice input anywhere on macOS through two configurab
 ## Privacy
 
 - Local mode never uploads audio.
-- WhisperKit downloads the multilingual Small Core ML model once;
+- WhisperKit downloads the multilingual Whisper Large V3 Turbo Core ML model once;
   model files are cached locally.
 - Cloud mode clearly identifies the selected provider.
 - Temporary recordings are deleted after success, cancellation, or failure.

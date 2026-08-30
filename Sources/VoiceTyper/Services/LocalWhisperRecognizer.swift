@@ -16,7 +16,9 @@ actor LocalWhisperRecognizer: SpeechRecognizer {
     private let modelName: String
     private var whisperKit: WhisperKit?
 
-    init(modelName: String = "base") {
+    /// A Core ML conversion of Whisper Large V3 Turbo. It balances substantially
+    /// better multilingual accuracy than Base with practical on-device speed.
+    init(modelName: String = "large-v3-v20240930_626MB") {
         self.modelName = modelName
     }
 
