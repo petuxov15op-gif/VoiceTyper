@@ -53,6 +53,7 @@ final class AppState: ObservableObject {
     private var recordingGeneration = 0
     private var shortcutPressTracker = ShortcutPressTracker()
     private var finishWhenRecordingStarts = false
+    private var processingTask: Task<Void, Never>?
 
     init(
         settings: AppSettings = AppSettings(),
@@ -161,6 +162,7 @@ final class AppState: ObservableObject {
         recordingGeneration += 1
         let generation = recordingGeneration
         isStartingRecording = true
+        finishWhenRecordingStarts = false
         insertionTarget = textInserter.captureTarget()
         insertionNotice = nil
         mode = .starting(action)
@@ -190,7 +192,9 @@ final class AppState: ObservableObject {
                 }
 
             } catch {
+                guard recordingGeneration == generation else { return }
                 isStartingRecording = false
+                finishWhenRecordingStarts = false
                 resumeSpotifyIfNeeded()
                 microphonePermission = audioRecorder.permissionState
                 RecordingOverlayController.shared.hide()
@@ -215,9 +219,9 @@ final class AppState: ObservableObject {
                 resumeSpotifyIfNeeded()
                 switch settings.recognizerMode {
                 case .localWhisper:
-                    transcribeLocally(action: action)
+                    transcribeLocally(action: action, generation: generation)
                 case .openRouter:
-                    transcribeWithOpenRouter(action: action)
+                    transcribeWithOpenRouter(action: action, generation: generation)
                 }
             } catch {
                 resumeSpotifyIfNeeded()
@@ -326,10 +330,13 @@ final class AppState: ObservableObject {
 
     func cancel() {
         recordingGeneration += 1
+        processingTask?.cancel()
+        processingTask = nil
         isStartingRecording = false
         finishWhenRecordingStarts = false
         shortcutPressTracker.reset()
         audioRecorder.cancel()
+        removeLastRecording()
         resumeSpotifyIfNeeded()
         RecordingOverlayController.shared.hide()
         inputLevel = 0
@@ -351,13 +358,16 @@ final class AppState: ObservableObject {
         lastCostUSD = nil
     }
 
-    private func transcribeWithOpenRouter(action: ActionKind) {
+    private func transcribeWithOpenRouter(action: ActionKind, generation: Int) {
         guard let url = lastRecordingURL else { return }
-        Task {
+        processingTask = Task {
             defer {
                 try? FileManager.default.removeItem(at: url)
                 if lastRecordingURL == url {
                     lastRecordingURL = nil
+                }
+                if recordingGeneration == generation {
+                    processingTask = nil
                 }
             }
             do {
@@ -366,6 +376,7 @@ final class AppState: ObservableObject {
                     language: "ru",
                     context: settings.recognitionContext
                 )
+                guard recordingGeneration == generation else { return }
                 var finalText = result.text
                 var totalCost = result.costUSD
                 var correctionNotice: String?
@@ -375,38 +386,47 @@ final class AppState: ObservableObject {
                             result.text,
                             context: settings.recognitionContext
                         )
+                        guard recordingGeneration == generation else { return }
                         finalText = correction.text
                         if let correctionCost = correction.costUSD {
                             totalCost = (totalCost ?? 0) + correctionCost
                         }
                     } catch {
+                        guard recordingGeneration == generation else { return }
                         correctionNotice = "Текст распознан, но умная коррекция недоступна: \(error.localizedDescription)"
                     }
                 }
+                guard recordingGeneration == generation else { return }
                 lastTranscript = finalText
                 lastCostUSD = totalCost
                 let insertion = try await textInserter.insert(
                     finalText,
                     into: insertionTarget ?? textInserter.captureTarget()
                 )
+                guard recordingGeneration == generation else { return }
                 updateInsertionNotice(for: insertion)
                 if insertion == .inserted, let correctionNotice {
                     insertionNotice = correctionNotice
                 }
                 mode = .result(action)
             } catch {
-                mode = .error(error.localizedDescription)
+                if recordingGeneration == generation {
+                    mode = .error(error.localizedDescription)
+                }
             }
         }
     }
 
-    private func transcribeLocally(action: ActionKind) {
+    private func transcribeLocally(action: ActionKind, generation: Int) {
         guard let url = lastRecordingURL else { return }
-        Task {
+        processingTask = Task {
             defer {
                 try? FileManager.default.removeItem(at: url)
                 if lastRecordingURL == url {
                     lastRecordingURL = nil
+                }
+                if recordingGeneration == generation {
+                    processingTask = nil
                 }
             }
             do {
@@ -415,16 +435,20 @@ final class AppState: ObservableObject {
                     language: "ru",
                     context: settings.recognitionContext
                 )
+                guard recordingGeneration == generation else { return }
                 lastTranscript = result.text
                 lastCostUSD = nil
                 let insertion = try await textInserter.insert(
                     result.text,
                     into: insertionTarget ?? textInserter.captureTarget()
                 )
+                guard recordingGeneration == generation else { return }
                 updateInsertionNotice(for: insertion)
                 mode = .result(action)
             } catch {
-                mode = .error(error.localizedDescription)
+                if recordingGeneration == generation {
+                    mode = .error(error.localizedDescription)
+                }
             }
         }
     }
