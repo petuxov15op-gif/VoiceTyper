@@ -8,6 +8,11 @@ struct MenuContentView: View {
             Label(appState.statusTitle, systemImage: appState.statusSymbol)
                 .font(.headline)
 
+            if appState.isProcessing {
+                ProgressView("Распознаю речь…")
+                    .controlSize(.small)
+            }
+
             if appState.isRecording {
                 Text("Отпустите удерживаемое сочетание или нажмите его ещё раз.")
                     .font(.caption)
@@ -25,6 +30,7 @@ struct MenuContentView: View {
                 )
             }
             .keyboardShortcut("d", modifiers: [.command])
+            .disabled(appState.isProcessing)
 
             Button {
                 appState.toggle(.assistant)
@@ -35,6 +41,7 @@ struct MenuContentView: View {
                 )
             }
             .keyboardShortcut("a", modifiers: [.command])
+            .disabled(appState.isProcessing)
 
             if case .listening = appState.mode {
                 Button("Завершить запись") { appState.finish() }
@@ -45,6 +52,11 @@ struct MenuContentView: View {
 
             if case .starting = appState.mode {
                 Button("Отменить", role: .cancel) { appState.cancel() }
+                    .keyboardShortcut(.cancelAction)
+            }
+
+            if appState.isProcessing {
+                Button("Отменить обработку", role: .cancel) { appState.cancel() }
                     .keyboardShortcut(.cancelAction)
             }
 
@@ -101,7 +113,10 @@ struct MenuContentView: View {
             }
             .keyboardShortcut(",", modifiers: [.command])
 
-            Button("Завершить VoiceTyper") { NSApplication.shared.terminate(nil) }
+            Button("Завершить VoiceTyper") {
+                appState.cancel()
+                NSApplication.shared.terminate(nil)
+            }
                 .keyboardShortcut("q", modifiers: [.command])
         }
         .padding(12)

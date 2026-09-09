@@ -20,6 +20,10 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
+                Text("Помощник пока распознаёт текст как диктовку. Выполнение голосовых команд ещё не реализовано.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 if settings.hasShortcutConflict {
                     Label(
                         "Назначьте разные сочетания для диктовки и помощника.",

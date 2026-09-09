@@ -69,7 +69,7 @@ final class AppSettings: ObservableObject {
         recognitionContext = defaults.string(forKey: Keys.recognitionContext) ?? ""
         smartCorrectionEnabled = defaults.object(forKey: Keys.smartCorrectionEnabled) as? Bool ?? false
         if defaults.object(forKey: Keys.microphoneDeviceID) != nil {
-            microphoneDeviceID = UInt32(defaults.integer(forKey: Keys.microphoneDeviceID))
+            microphoneDeviceID = UInt32(exactly: defaults.integer(forKey: Keys.microphoneDeviceID))
         } else {
             microphoneDeviceID = nil
         }

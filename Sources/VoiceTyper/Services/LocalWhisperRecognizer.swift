@@ -15,6 +15,7 @@ actor LocalWhisperRecognizer: SpeechRecognizer {
 
     private let modelName: String
     private var whisperKit: WhisperKit?
+    private var loadingTask: Task<Void, Error>?
 
     /// A Core ML conversion of Whisper Large V3 Turbo. It balances substantially
     /// better multilingual accuracy than Base with practical on-device speed.
@@ -32,6 +33,7 @@ actor LocalWhisperRecognizer: SpeechRecognizer {
         context: String
     ) async throws -> TranscriptionResult {
         let whisperKit = try await loadWhisperKit()
+        try Task.checkCancellation()
         let isAutomaticLanguage = language == "auto"
         let trimmedContext = context.trimmingCharacters(in: .whitespacesAndNewlines)
         let promptTokens = trimmedContext.isEmpty
@@ -64,6 +66,10 @@ actor LocalWhisperRecognizer: SpeechRecognizer {
         if let whisperKit {
             return whisperKit
         }
+        if let loadingTask {
+            try await loadingTask.value
+            return try await loadWhisperKit()
+        }
 
         let configuration = WhisperKitConfig(
             model: modelName,
@@ -72,8 +78,11 @@ actor LocalWhisperRecognizer: SpeechRecognizer {
             load: true,
             download: true
         )
-        let whisperKit = try await WhisperKit(configuration)
-        self.whisperKit = whisperKit
-        return whisperKit
+        // Keep the non-Sendable pipeline inside this actor; waiters only await completion.
+        let task = Task { self.whisperKit = try await WhisperKit(configuration) }
+        loadingTask = task
+        defer { loadingTask = nil }
+        try await task.value
+        return try await loadWhisperKit()
     }
 }

@@ -4,6 +4,7 @@ import ApplicationServices
 enum TextInsertionError: LocalizedError {
     case accessibilityPermissionRequired
     case unavailable
+    case clipboardChanged
 
     var errorDescription: String? {
         switch self {
@@ -11,6 +12,8 @@ enum TextInsertionError: LocalizedError {
             "Чтобы вставлять текст в другие приложения, разрешите VoiceTyper в «Настройки системы → Конфиденциальность и безопасность → Универсальный доступ»."
         case .unavailable:
             "Не удалось отправить текст в активное поле. Поставьте курсор в поле ввода и повторите попытку."
+        case .clipboardChanged:
+            "Буфер обмена изменился во время вставки. Распознанный текст доступен в меню VoiceTyper — скопируйте его снова."
         }
     }
 }
@@ -55,13 +58,13 @@ final class TextInserter {
         }
         return TextInsertionTarget(
             application: application,
-            focusedElement: focusedElement()
+            focusedElement: application == nil ? nil : focusedElement()
         )
     }
 
     func insert(_ text: String, into target: TextInsertionTarget) async throws -> TextInsertionOutcome {
-        NSPasteboard.general.clearContents()
-        guard NSPasteboard.general.setString(text, forType: .string) else {
+        try Task.checkCancellation()
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw TextInsertionError.unavailable
         }
 
@@ -74,8 +77,21 @@ final class TextInserter {
             return .inserted
         }
 
-        target.application?.activate()
+        NSPasteboard.general.clearContents()
+        guard NSPasteboard.general.setString(text, forType: .string) else {
+            throw TextInsertionError.unavailable
+        }
+        let clipboardChangeCount = NSPasteboard.general.changeCount
+        guard let application = target.application, !application.isTerminated,
+              application.activate() else { return .copiedToClipboard }
         try await Task.sleep(for: .milliseconds(120))
+        try Task.checkCancellation()
+        guard NSPasteboard.general.changeCount == clipboardChangeCount else {
+            throw TextInsertionError.clipboardChanged
+        }
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == application.processIdentifier else {
+            return .copiedToClipboard
+        }
 
         if let element = focusedElement(),
            AXUIElementSetAttributeValue(

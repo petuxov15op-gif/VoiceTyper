@@ -4,6 +4,7 @@ struct OpenRouterRecognizer: SpeechRecognizer {
     enum RecognizerError: LocalizedError {
         case missingAPIKey
         case invalidResponse
+        case emptyResult
         case requestFailed(statusCode: Int, message: String)
 
         var errorDescription: String? {
@@ -12,6 +13,8 @@ struct OpenRouterRecognizer: SpeechRecognizer {
                 "Добавьте API-ключ OpenRouter в настройках."
             case .invalidResponse:
                 "OpenRouter вернул ответ неизвестного формата."
+            case .emptyResult:
+                "Речь не распознана. Попробуйте говорить ближе к микрофону."
             case .requestFailed(let statusCode, let message):
                 "Ошибка OpenRouter \(statusCode): \(message)"
             }
@@ -80,9 +83,15 @@ struct OpenRouterRecognizer: SpeechRecognizer {
         guard let decoded = try? JSONDecoder().decode(ResponseBody.self, from: data) else {
             throw RecognizerError.invalidResponse
         }
-        return TranscriptionResult(text: decoded.text, costUSD: decoded.usage?.cost)
+        let text = try Self.validatedTranscript(decoded.text)
+        return TranscriptionResult(text: text, costUSD: decoded.usage?.cost)
     }
 
+    static func validatedTranscript(_ value: String) throws -> String {
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { throw RecognizerError.emptyResult }
+        return text
+    }
 }
 
 private extension OpenRouterRecognizer {

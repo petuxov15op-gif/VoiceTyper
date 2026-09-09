@@ -49,7 +49,13 @@ final class AudioRecorder {
 
     private var engine: AVAudioEngine?
     private var sink: AudioFileSink?
+    private var startGeneration = 0
+    private let permissionRequest: (() async -> Bool)?
     private(set) var currentURL: URL?
+
+    init(permissionRequest: (() async -> Bool)? = nil) {
+        self.permissionRequest = permissionRequest
+    }
 
     var permissionState: PermissionState {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -73,7 +79,17 @@ final class AudioRecorder {
 
     func start(deviceID: AudioDeviceID?, voiceProcessingEnabled: Bool) async throws {
         guard engine?.isRunning != true else { return }
-        guard await requestPermission() else { throw RecorderError.permissionDenied }
+        startGeneration += 1
+        let generation = startGeneration
+        let granted: Bool
+        if let permissionRequest {
+            granted = await permissionRequest()
+        } else {
+            granted = await requestPermission()
+        }
+        try Task.checkCancellation()
+        guard generation == startGeneration else { throw CancellationError() }
+        guard granted else { throw RecorderError.permissionDenied }
 
         let engine = AVAudioEngine()
         let input = engine.inputNode
@@ -220,7 +236,8 @@ final class AudioRecorder {
     }
 
     func cancel() {
-        if let engine, engine.isRunning {
+        startGeneration += 1
+        if let engine {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
             engine.reset()

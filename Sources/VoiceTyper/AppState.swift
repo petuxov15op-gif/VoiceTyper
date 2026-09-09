@@ -54,6 +54,14 @@ final class AppState: ObservableObject {
     private var shortcutPressTracker = ShortcutPressTracker()
     private var finishWhenRecordingStarts = false
     private var processingTask: Task<Void, Never>?
+    private var startingTask: Task<Void, Never>?
+    private var recordingSettings: RecognitionSettings?
+
+    private struct RecognitionSettings {
+        let mode: AppSettings.RecognizerMode
+        let context: String
+        let smartCorrection: Bool
+    }
 
     init(
         settings: AppSettings = AppSettings(),
@@ -132,6 +140,11 @@ final class AppState: ObservableObject {
         }
     }
 
+    var isProcessing: Bool {
+        if case .processing = mode { return true }
+        return false
+    }
+
     var appBundlePath: String {
         Bundle.main.bundleURL.path
     }
@@ -158,28 +171,35 @@ final class AppState: ObservableObject {
     }
 
     func begin(_ action: ActionKind) {
-        guard !audioRecorder.isRecording, !isStartingRecording else { return }
+        guard !audioRecorder.isRecording, !isStartingRecording, !isProcessing else { return }
         recordingGeneration += 1
         let generation = recordingGeneration
         isStartingRecording = true
         finishWhenRecordingStarts = false
+        recordingSettings = RecognitionSettings(
+            mode: settings.recognizerMode,
+            context: settings.recognitionContext,
+            smartCorrection: settings.smartCorrectionEnabled
+        )
+        let deviceID = settings.microphoneDeviceID
+        let voiceProcessingEnabled = settings.voiceProcessingEnabled
         insertionTarget = textInserter.captureTarget()
         insertionNotice = nil
         mode = .starting(action)
         RecordingOverlayController.shared.show(appState: self)
         removeLastRecording()
-        Task {
+        startingTask = Task {
+            defer {
+                if recordingGeneration == generation { startingTask = nil }
+            }
             do {
+                try Task.checkCancellation()
                 shouldResumeSpotify = spotifyPlaybackController.pauseIfPlaying()
                 try await audioRecorder.start(
-                    deviceID: settings.microphoneDeviceID,
-                    voiceProcessingEnabled: settings.voiceProcessingEnabled
+                    deviceID: deviceID,
+                    voiceProcessingEnabled: voiceProcessingEnabled
                 )
-                guard recordingGeneration == generation else {
-                    audioRecorder.cancel()
-                    resumeSpotifyIfNeeded()
-                    return
-                }
+                guard recordingGeneration == generation else { return }
                 isStartingRecording = false
                 microphonePermission = audioRecorder.permissionState
                 mode = .listening(action)
@@ -217,7 +237,7 @@ final class AppState: ObservableObject {
             do {
                 lastRecordingURL = try audioRecorder.stop()
                 resumeSpotifyIfNeeded()
-                switch settings.recognizerMode {
+                switch recordingSettings?.mode ?? .localWhisper {
                 case .localWhisper:
                     transcribeLocally(action: action, generation: generation)
                 case .openRouter:
@@ -330,6 +350,8 @@ final class AppState: ObservableObject {
 
     func cancel() {
         recordingGeneration += 1
+        startingTask?.cancel()
+        startingTask = nil
         processingTask?.cancel()
         processingTask = nil
         isStartingRecording = false
@@ -340,6 +362,7 @@ final class AppState: ObservableObject {
         resumeSpotifyIfNeeded()
         RecordingOverlayController.shared.hide()
         inputLevel = 0
+        insertionNotice = nil
         mode = .ready
     }
 
@@ -359,7 +382,7 @@ final class AppState: ObservableObject {
     }
 
     private func transcribeWithOpenRouter(action: ActionKind, generation: Int) {
-        guard let url = lastRecordingURL else { return }
+        guard let url = lastRecordingURL, let configuration = recordingSettings else { return }
         processingTask = Task {
             defer {
                 try? FileManager.default.removeItem(at: url)
@@ -374,17 +397,17 @@ final class AppState: ObservableObject {
                 let result = try await openRouterRecognizer.transcribe(
                     audioURL: url,
                     language: "ru",
-                    context: settings.recognitionContext
+                    context: configuration.context
                 )
                 guard recordingGeneration == generation else { return }
                 var finalText = result.text
                 var totalCost = result.costUSD
                 var correctionNotice: String?
-                if settings.smartCorrectionEnabled {
+                if configuration.smartCorrection {
                     do {
                         let correction = try await openRouterTextCorrector.correct(
                             result.text,
-                            context: settings.recognitionContext
+                            context: configuration.context
                         )
                         guard recordingGeneration == generation else { return }
                         finalText = correction.text
@@ -418,7 +441,7 @@ final class AppState: ObservableObject {
     }
 
     private func transcribeLocally(action: ActionKind, generation: Int) {
-        guard let url = lastRecordingURL else { return }
+        guard let url = lastRecordingURL, let configuration = recordingSettings else { return }
         processingTask = Task {
             defer {
                 try? FileManager.default.removeItem(at: url)
@@ -433,7 +456,7 @@ final class AppState: ObservableObject {
                 let result = try await localWhisperRecognizer.transcribe(
                     audioURL: url,
                     language: "ru",
-                    context: settings.recognitionContext
+                    context: configuration.context
                 )
                 guard recordingGeneration == generation else { return }
                 lastTranscript = result.text
@@ -458,7 +481,7 @@ final class AppState: ObservableObject {
         case .inserted:
             insertionNotice = nil
         case .copiedToClipboard:
-            insertionNotice = "Текст распознан и скопирован. Для автоматической вставки разрешите VoiceTyper в «Универсальном доступе»."
+            insertionNotice = "Текст скопирован. Автоматическая вставка недоступна: проверьте исходное приложение и «Универсальный доступ», затем вставьте текст через ⌘V."
         }
     }
 
